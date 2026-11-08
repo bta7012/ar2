@@ -1,0 +1,90 @@
+name: Deploy to server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# never run two deploys at the same time
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: 138.201.50.242
+      SSH_PORT: "32308"
+      SSH_USER: prjadm
+      DEPLOY_PATH: /var/www/ar2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------- CI: basic checks ----------
+      - name: Validate project
+        run: |
+          set -e
+          test -f index.html       || { echo "::error::index.html missing"; exit 1; }
+          test -f WallLamp_web.glb || { echo "::error::WallLamp_web.glb missing"; exit 1; }
+          # GLB must start with the 'glTF' magic
+          [ "$(head -c 4 WallLamp_web.glb)" = "glTF" ] || { echo "::error::WallLamp_web.glb is not a binary glTF"; exit 1; }
+          # model must be embedded into index.html
+          if grep -q '__GLB_BASE64__' index.html; then echo "::error::GLB placeholder not replaced"; exit 1; fi
+          # syntax-check the inline ES module
+          python3 - <<'EOF'
+          import re, pathlib
+          s = pathlib.Path('index.html').read_text(encoding='utf-8')
+          m = re.findall(r'<script type="module">(.*?)</script>', s, re.S)
+          assert m, 'no inline module found'
+          pathlib.Path('/tmp/app.mjs').write_text(m[0], encoding='utf-8')
+          EOF
+          node --check /tmp/app.mjs
+          echo "Checks passed"
+
+      - name: Build dist
+        run: |
+          mkdir dist
+          cp index.html WallLamp_web.glb dist/
+          echo "${GITHUB_SHA}  $(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist/version.txt
+
+      # ---------- CD: rsync over SSH ----------
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -e
+          [ -n "$SSH_PRIVATE_KEY" ] || { echo "::error::Secret SSH_PRIVATE_KEY is not set"; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS not set, trusting host key from ssh-keyscan"
+            ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" > ~/.ssh/known_hosts
+          fi
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: |
+          set -e
+          SSH="ssh -i ~/.ssh/deploy_key -p $SSH_PORT -o StrictHostKeyChecking=yes -o BatchMode=yes"
+          $SSH "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOY_PATH'"
+          # --delay-updates: files are swapped in at the very end -> no half-updated site
+          rsync -rlz --delete --delay-updates --chmod=D755,F644 \
+            -e "$SSH" dist/ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
+          $SSH "$SSH_USER@$SSH_HOST" "cat '$DEPLOY_PATH/version.txt' && ls -la '$DEPLOY_PATH'"
+
+      - name: Smoke test
+        if: ${{ vars.SITE_URL != '' }}
+        run: |
+          curl -fsS "${{ vars.SITE_URL }}/version.txt"
+          curl -fsSI "${{ vars.SITE_URL }}/WallLamp_web.glb" | grep -i '^content-type'
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

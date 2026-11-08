@@ -1,0 +1,6 @@
+# deploy keys must never be committed
+.deploy/
+dist/
+node_modules/
+.DS_Store
+Thumbs.db

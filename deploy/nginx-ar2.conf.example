@@ -1,0 +1,32 @@
+# Example nginx site for /var/www/ar2.
+# WebXR (camera AR) works ONLY over HTTPS -> certificate is mandatory.
+#   sudo cp nginx-ar2.conf.example /etc/nginx/sites-available/ar2
+#   sudo ln -s /etc/nginx/sites-available/ar2 /etc/nginx/sites-enabled/
+#   sudo certbot --nginx -d ar2.example.com
+#   sudo nginx -t && sudo systemctl reload nginx
+
+server {
+    listen 80;
+    server_name ar2.example.com;          # <- your domain
+    root /var/www/ar2;
+    index index.html;
+
+    # nginx's default mime.types has no glTF
+    types {
+        text/html                 html;
+        text/plain                txt;
+        model/gltf-binary         glb;
+        model/gltf+json           gltf;
+        model/vnd.usdz+zip        usdz;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+        add_header Permissions-Policy "xr-spatial-tracking=(self), camera=(self)";
+    }
+    location ~* \.(glb|gltf|usdz)$ {
+        add_header Access-Control-Allow-Origin "*";
+        add_header Cache-Control "public, max-age=86400";
+    }
+    location / { try_files $uri $uri/ =404; }
+}
