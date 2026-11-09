@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<link rel="icon" href="data:,">
+<title>Wall Lamp AR — повесить светильник на стену</title>
+<!-- start fetching the bundle and the model in parallel with HTML parsing -->
+<link rel="modulepreload" href="app.js">
+<link rel="preload" href="WallLamp_web.glb" as="fetch" type="model/gltf-binary" crossorigin>
+<style>
+  :root{--bg:#121214;--fg:#f3efe8;--muted:#9a958c;--accent:#ffb36b;--ok:#6be3a4;--bad:#ff6b6b}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    padding:24px 20px calc(24px + env(safe-area-inset-bottom));gap:14px}
+  #start h1{margin:8px 0 0;font-size:22px;font-weight:650}
+  #start p.sub{margin:0;color:var(--muted);font-size:14px;text-align:center;max-width:420px;line-height:1.45}
+  #preview{position:relative;flex:1;width:100%;max-width:520px;min-height:240px;border-radius:18px;overflow:hidden;
+    background:radial-gradient(ellipse at 50% 45%,#2a2724 0%,#161517 70%);touch-action:none}
+  #preview canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #preview .hint{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:12px;color:var(--muted);pointer-events:none}
+  .btn{appearance:none;border:0;border-radius:14px;padding:15px 22px;font-size:16px;font-weight:600;
+    background:var(--accent);color:#1b1309;width:100%;max-width:520px}
+  .btn:disabled{opacity:.45}
+  #support{font-size:13px;color:var(--muted);text-align:center;min-height:18px;max-width:520px}
+  #overlay{position:fixed;inset:0;display:none;pointer-events:none}
+  #overlay>*{pointer-events:auto}
+  #status{position:absolute;top:calc(14px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+    background:rgba(18,18,20,.82);padding:10px 16px;border-radius:999px;font-size:14px;white-space:nowrap;
+    display:flex;gap:8px;align-items:center}
+  #dot{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none}
+  #dot.ok{background:var(--ok)} #dot.bad{background:var(--bad)}
+  #bar{position:absolute;left:0;right:0;bottom:calc(18px + env(safe-area-inset-bottom));
+    display:flex;justify-content:center;gap:10px;padding:0 12px}
+  #bar button{appearance:none;border:0;border-radius:14px;min-width:64px;padding:10px 12px;
+    background:rgba(18,18,20,.85);color:var(--fg);font-size:12px;display:flex;flex-direction:column;align-items:center;gap:3px}
+  #bar button span{font-size:20px;line-height:1}
+  #bar button.on{background:var(--accent);color:#1b1309}
+  #bar button:disabled{opacity:.4}
+  #help{position:absolute;bottom:calc(92px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+    font-size:12px;color:#e8e2d8;text-shadow:0 1px 3px #000;text-align:center;width:90%}
+</style>
+</head>
+<body>
+
+<section id="start">
+  <h1>Настенный светильник в AR</h1>
+  <p class="sub">Наведите камеру на стену, дождитесь зелёного прицела и коснитесь экрана — светильник повиснет на стене.</p>
+  <div id="preview"><div class="hint">Потяните, чтобы повернуть</div></div>
+  <button id="enter" class="btn" disabled>Загрузка…</button>
+  <div id="support"></div>
+</section>
+
+<div id="overlay">
+  <div id="status"><i id="dot"></i><b id="statusText">Запуск…</b></div>
+  <div id="help">Тап — повесить · двумя пальцами — повернуть и масштабировать</div>
+  <div id="bar">
+    <button id="bUndo" disabled><span>↶</span>Отменить</button>
+    <button id="bMove" disabled><span>✥</span>Сдвинуть</button>
+    <button id="bLight" class="on"><span>💡</span>Свет</button>
+    <button id="bExit"><span>✕</span>Выход</button>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

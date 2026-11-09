@@ -2,14 +2,24 @@
 
 Веб-приложение: отслеживает стену через камеру телефона и вешает на неё модель `WallLamp_web.glb`.
 
-## Файлы
-- `index.html` — всё приложение (модель встроена в base64, работает даже без .glb рядом)
-- `WallLamp_web.glb` — та же модель отдельным файлом (нужна для Scene Viewer на Android без WebXR)
+## Структура
+- `src/main.js` — код приложения (three.js импортируется из npm, esbuild оставляет только используемые части)
+- `public/index.html`, `public/WallLamp_web.glb` — статика
+- `build.mjs` — сборка в `dist/`: бандл `app-<hash>.js` (минифицирован, ~144 KB gzip) + `.gz`-копии для nginx `gzip_static`
+- `npm run build` — собрать, `npm run dev` — собрать и поднять локальный сервер на :8080
+
+## Оптимизация загрузки
+- Один бандл с вашего сервера вместо `three.module.js` (1.3 MB) + `model-viewer` (0.95 MB) с CDN: ~2.3 MB → 0.56 MB (144 KB gzip)
+- `model-viewer` грузится лениво и только на устройствах без WebXR (iPhone → Quick Look)
+- Один WebGL-контекст на превью и AR; превью рендерится только при перетаскивании, без постоянного цикла
+- Без PMREM-окружения; шейдеры AR компилируются заранее (`compileAsync`), первый кадр AR без фризов
+- Модель — отдельный файл с `preload`, а не base64 внутри HTML; pixel ratio ≤ 2, AR framebuffer 0.85
+- В цикле трекинга нет аллокаций (меньше пауз GC), статус в DOM обновляется только при изменении
 
 ## Технологии
 - **WebXR** `immersive-ar` + **Hit Test** (только плоскости), **DOM Overlay**, опционально `plane-detection`
-- **three.js 0.170** (GLTFLoader, RoomEnvironment) — рендер, ретикл, «призрак» модели, тень и световое пятно на стене
-- **model-viewer 4** — 3D-превью на стартовом экране и фолбэк: iOS AR Quick Look / Android Scene Viewer с `ar-placement="wall"`
+- **three.js 0.170** (GLTFLoader) — рендер, ретикл, «призрак» модели, тень и световое пятно на стене
+- **esbuild** — сборка; **model-viewer 4** — только фолбэк для iOS (AR Quick Look, `ar-placement="wall"`), грузится по требованию
 
 ## Как работает определение стены
 Из позы попадания берётся ось Y — нормаль поверхности. Если `|normal.y| < 0.35` — поверхность вертикальная (стена):
@@ -27,7 +37,8 @@ WebXR работает только в защищённом контексте (
 **Локально на Android (Chrome + ARCore):**
 ```
 cd C:\project\ar2
-npx serve -l 8080
+npm install
+npm run dev
 ```
 Подключите телефон по USB (отладка по USB включена), откройте на ПК `chrome://inspect` → *Port forwarding* → `8080 → localhost:8080`,
 затем на телефоне в Chrome откройте `http://localhost:8080`.
@@ -41,8 +52,8 @@ npx serve -l 8080
 
 ## CI/CD
 `.github/workflows/deploy.yml` — при каждом push в `main`:
-1. **CI**: проверка наличия файлов, сигнатуры GLB, встроенной модели и синтаксиса JS (`node --check`).
-2. **CD**: `rsync` по SSH на `prjadm@138.201.50.242:32308` в `/var/www/ar2` (`--delete --delay-updates` — обновление без полуразобранного сайта), плюс `version.txt` с SHA коммита.
+1. **CI**: `npm ci` → `npm run build` → проверка `dist/` (GLB, ссылка на бандл, `node --check`).
+2. **CD**: `rsync` папки `dist/` по SSH на `prjadm@138.201.50.242:32308` в `/var/www/ar2` (`--delete --delay-updates` — обновление без полуразобранного сайта), плюс `version.txt` с SHA коммита.
 3. Smoke-test, если в репозитории задана переменная `SITE_URL` (Settings → Variables).
 
 Ручной запуск: Actions → *Deploy to server* → *Run workflow*.

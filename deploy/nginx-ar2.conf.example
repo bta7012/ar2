@@ -1,32 +1,27 @@
-# Example nginx site for /var/www/ar2.
-# WebXR (camera AR) works ONLY over HTTPS -> certificate is mandatory.
-#   sudo cp nginx-ar2.conf.example /etc/nginx/sites-available/ar2
-#   sudo ln -s /etc/nginx/sites-available/ar2 /etc/nginx/sites-enabled/
-#   sudo certbot --nginx -d ar2.example.com
-#   sudo nginx -t && sudo systemctl reload nginx
+# Block for /ar2 inside the existing server { } of test8.aestar.com.ua.
+# WebXR (camera AR) works ONLY over HTTPS.
 
-server {
-    listen 80;
-    server_name ar2.example.com;          # <- your domain
-    root /var/www/ar2;
+location = /ar2 { return 301 /ar2/; }
+
+location ^~ /ar2/ {
+    alias /var/www/ar2/;
     index index.html;
 
-    # nginx's default mime.types has no glTF
     types {
-        text/html                 html;
-        text/plain                txt;
-        model/gltf-binary         glb;
-        model/gltf+json           gltf;
-        model/vnd.usdz+zip        usdz;
+        text/html               html;
+        text/plain              txt;
+        application/javascript  js;
+        model/gltf-binary       glb;
     }
 
-    location = /index.html {
-        add_header Cache-Control "no-cache";
-        add_header Permissions-Policy "xr-spatial-tracking=(self), camera=(self)";
-    }
-    location ~* \.(glb|gltf|usdz)$ {
-        add_header Access-Control-Allow-Origin "*";
-        add_header Cache-Control "public, max-age=86400";
-    }
-    location / { try_files $uri $uri/ =404; }
+    # CI uploads pre-compressed *.gz twins -> served without CPU cost
+    gzip_static on;
+    gzip on;
+    gzip_types application/javascript model/gltf-binary text/plain;
+
+    # hashed bundle (app-XXXXXXXX.js) never changes -> cache for a year; everything else revalidates
+    set $ar2_cache "no-cache";
+    if ($uri ~ "/app-[A-Z0-9]+\.js$") { set $ar2_cache "public, max-age=31536000, immutable"; }
+    add_header Cache-Control $ar2_cache;
+    add_header Permissions-Policy "xr-spatial-tracking=(self), camera=(self)";
 }
